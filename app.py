@@ -8,6 +8,7 @@ import socket
 from bs4 import BeautifulSoup
 import json
 from concurrent.futures import ThreadPoolExecutor
+import os
 
 # --- Custom CSS for Modern Look ---
 st.markdown("""
@@ -51,11 +52,28 @@ body {
 """, unsafe_allow_html=True)
 
 # --- Blacklist Data ---
-try:
-    with open('blacklist.json', 'r') as f:
-        blacklisted_domains = json.load(f)
-except FileNotFoundError:
-    blacklisted_domains = []
+def load_blacklist():
+    try:
+        with open('blacklist.json', 'r') as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return []
+    except Exception:
+        return []
+
+def save_blacklist(blacklist):
+    with open('blacklist.json', 'w') as f:
+        json.dump(blacklist, f, indent=2)
+
+blacklisted_domains = load_blacklist()
+
+def add_to_blacklist(domain):
+    """Add a domain to the blacklist and save if not already present."""
+    blacklist = load_blacklist()
+    if domain not in blacklist:
+        blacklist.append(domain)
+        save_blacklist(blacklist)
+        st.info(f"Domain {domain} has been added to the blacklist.")
 
 def calculate_risk_score(details):
     score = 0
@@ -161,7 +179,7 @@ def extract_details(url):
             details['has_login_form'] = 'N/A'
             details['requests_sensitive_info'] = 'N/A'
             details['has_unusual_scripts'] = 'N/A'
-        details['is_blacklisted'] = 'Yes' if domain in blacklisted_domains else 'No'
+        details['is_blacklisted'] = 'Yes' if domain in load_blacklist() else 'No'
     except Exception as e:
         details['error'] = str(e)
     return details
@@ -209,6 +227,11 @@ def main():
                 comments = st.text_area("Additional Comments")
                 if st.button("Submit Feedback"):
                     st.success("Thank you for your feedback! (Submitted: {})".format(feedback))
+                    # --- Auto-update blacklist if user marks as phishing ---
+                    if feedback == "No":
+                        parsed_url = urlparse(url)
+                        domain = parsed_url.netloc
+                        add_to_blacklist(domain)
         else:
             st.warning("Please enter a valid URL")
 
