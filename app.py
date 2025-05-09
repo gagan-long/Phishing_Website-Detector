@@ -13,41 +13,110 @@ import os
 # --- Custom CSS for Modern Look ---
 st.markdown("""
 <style>
-body {
-    background-color: #f0f2f6;
+/* App background */
+[data-testid="stAppViewContainer"] {
+    background: linear-gradient(135deg, #f0f2f6 0%, #e9ecef 100%);
 }
-.stButton>button {
+
+/* Header styles */
+h1, h2, h3, h4 {
+    color: #ff4b4b !important;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* Button styles */
+.stButton > button {
     background-color: #ff4b4b;
-    color: white;
-    font-weight: bold;
+    color: #fff;
+    font-weight: 600;
     border-radius: 8px;
-    padding: 10px 24px;
+    padding: 10px 28px;
     border: none;
-    transition: background-color 0.3s ease;
+    box-shadow: 0 2px 6px rgba(255,75,75,0.08);
+    transition: background 0.2s, box-shadow 0.2s;
+    font-size: 1.1rem;
 }
-.stButton>button:hover {
-    background-color: #d73737;
+.stButton > button:hover {
+    background: #d73737;
+    box-shadow: 0 4px 12px rgba(255,75,75,0.15);
 }
+
+/* Card-style metrics */
 .metric-container {
-    background: white;
-    border-radius: 10px;
-    padding: 20px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.07);
-    margin-bottom: 20px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 22px 18px 18px 18px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+    margin-bottom: 22px;
     text-align: center;
+    border-left: 6px solid #ff4b4b;
 }
+
+.metric-container h3 {
+    color: #31333f;
+    margin-bottom: 8px;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+.metric-container p {
+    font-size: 2.1rem;
+    font-weight: bold;
+    margin: 0;
+}
+
+/* Scrollable, shadowed boxes for details, paths, and ports */
 .details-list, .paths-list, .ports-list {
-    background: white;
-    border-radius: 10px;
-    padding: 20px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.07);
-    max-height: 300px;
+    background: #fff;
+    border-radius: 12px;
+    padding: 22px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.07);
+    max-height: 320px;
     overflow-y: auto;
-    margin-bottom: 24px;
+    margin-bottom: 26px;
+    font-size: 1.04rem;
 }
 .details-list ul, .paths-list ul, .ports-list ul {
-    padding-left: 18px;
+    padding-left: 22px;
+    margin-bottom: 0;
 }
+.details-list li, .paths-list li, .ports-list li {
+    margin-bottom: 8px;
+}
+.paths-list code, .ports-list code {
+    background: #f8f9fa;
+    color: #d6336c;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 1.02rem;
+}
+
+/* Feedback radio and textarea */
+[data-testid="stRadio"], .stTextArea textarea {
+    font-size: 1.08rem;
+}
+.stTextArea textarea {
+    border-radius: 8px;
+    border: 1.5px solid #ff4b4b;
+    padding: 10px;
+    background: #f8f9fa;
+    font-family: inherit;
+}
+
+/* Subheader and section titles */
+.stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
+    color: #ff4b4b !important;
+    font-weight: 700;
+    margin-top: 18px;
+}
+
+/* Info/warning/success boxes */
+.stAlert {
+    border-radius: 10px !important;
+    font-size: 1.04rem;
+}
+
+/* Hide Streamlit footer */
+footer {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
