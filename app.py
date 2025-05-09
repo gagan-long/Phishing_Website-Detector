@@ -13,18 +13,13 @@ import os
 # --- Custom CSS for Modern Look ---
 st.markdown("""
 <style>
-/* App background */
 [data-testid="stAppViewContainer"] {
     background: linear-gradient(135deg, #f0f2f6 0%, #e9ecef 100%);
 }
-
-/* Header styles */
 h1, h2, h3, h4 {
     color: #ff4b4b !important;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
-
-/* Button styles */
 .stButton > button {
     background-color: #ff4b4b;
     color: #fff;
@@ -40,8 +35,6 @@ h1, h2, h3, h4 {
     background: #d73737;
     box-shadow: 0 4px 12px rgba(255,75,75,0.15);
 }
-
-/* Card-style metrics */
 .metric-container {
     background: #fff;
     border-radius: 12px;
@@ -51,7 +44,6 @@ h1, h2, h3, h4 {
     text-align: center;
     border-left: 6px solid #ff4b4b;
 }
-
 .metric-container h3 {
     color: #31333f;
     margin-bottom: 8px;
@@ -63,8 +55,6 @@ h1, h2, h3, h4 {
     font-weight: bold;
     margin: 0;
 }
-
-/* Scrollable, shadowed boxes for details, paths, and ports */
 .details-list, .paths-list, .ports-list {
     background: #fff;
     border-radius: 12px;
@@ -89,8 +79,6 @@ h1, h2, h3, h4 {
     border-radius: 4px;
     font-size: 1.02rem;
 }
-
-/* Feedback radio and textarea */
 [data-testid="stRadio"], .stTextArea textarea {
     font-size: 1.08rem;
 }
@@ -101,21 +89,15 @@ h1, h2, h3, h4 {
     background: #f8f9fa;
     font-family: inherit;
 }
-
-/* Subheader and section titles */
 .stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
     color: #ff4b4b !important;
     font-weight: 700;
     margin-top: 18px;
 }
-
-/* Info/warning/success boxes */
 .stAlert {
     border-radius: 10px !important;
     font-size: 1.04rem;
 }
-
-/* Hide Streamlit footer */
 footer {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
@@ -134,15 +116,36 @@ def save_blacklist(blacklist):
     with open('blacklist.json', 'w') as f:
         json.dump(blacklist, f, indent=2)
 
-blacklisted_domains = load_blacklist()
-
 def add_to_blacklist(domain):
-    """Add a domain to the blacklist and save if not already present."""
     blacklist = load_blacklist()
     if domain not in blacklist:
         blacklist.append(domain)
         save_blacklist(blacklist)
         st.info(f"Domain {domain} has been added to the blacklist.")
+
+# --- Typosquatting & Lookalike Detection ---
+POPULAR_BRANDS = [
+    "google.com", "facebook.com", "apple.com", "amazon.com", "microsoft.com",
+    "paypal.com", "bankofamerica.com", "wellsfargo.com", "github.com", "twitter.com"
+]
+
+def generate_typos(domain):
+    typos = set()
+    if '.' in domain:
+        name, tld = domain.rsplit('.', 1)
+    else:
+        name, tld = domain, ''
+    # Missing dot
+    typos.add(name.replace('.', '') + ('.' + tld if tld else ''))
+    # Swapped adjacent letters
+    for i in range(len(name) - 1):
+        swapped = list(name)
+        swapped[i], swapped[i+1] = swapped[i+1], swapped[i]
+        typos.add(''.join(swapped) + ('.' + tld if tld else ''))
+    # Missing letter
+    for i in range(len(name)):
+        typos.add(name[:i] + name[i+1:] + ('.' + tld if tld else ''))
+    return typos
 
 def calculate_risk_score(details):
     score = 0
@@ -201,6 +204,19 @@ def extract_details(url):
         details['found_paths'] = crawl_website(url)
         details['uses_https'] = 'Yes' if parsed_url.scheme == 'https' else 'No'
         domain = parsed_url.netloc
+
+        # --- Typosquatting & lookalike detection ---
+        domain_lower = domain.lower()
+        typos = generate_typos(domain_lower)
+        lookalike_matches = []
+        for brand in POPULAR_BRANDS:
+            brand_base = brand.lower()
+            if (domain_lower == brand_base or
+                domain_lower.replace('www.', '') == brand_base or
+                brand_base in typos):
+                lookalike_matches.append(brand)
+        details['lookalike_brands'] = lookalike_matches if lookalike_matches else None
+
         try:
             w = whois.whois(domain)
             details['domain_age'] = str(w.creation_date)
@@ -262,7 +278,6 @@ def port_scan(target, port_range=(1, 1024), max_threads=100):
         target_ip = socket.gethostbyname(target)
     except Exception:
         return [], [], "Could not resolve domain to IP."
-    
     def scan_port(port):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(0.5)
@@ -276,18 +291,15 @@ def port_scan(target, port_range=(1, 1024), max_threads=100):
             closed_ports.append(port)
         finally:
             s.close()
-    
     threads = []
     for port in range(port_range[0], port_range[1]+1):
         t = ThreadPoolExecutor(max_workers=max_threads)
         t.submit(scan_port, port)
         t.shutdown(wait=True)
-    
     return sorted(open_ports), sorted(closed_ports), None
 
-
 def main():
-    st.markdown("<h1 style='color:#ff4b4b;'>🛡️ Phishing Website Detector, Port Scaner</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color:#ff4b4b;'>🛡️ Phishing Website Detector, Port Scanner</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#31333f;font-size:1.1rem;'>Analyze any website for phishing risk, sensitive directories, and more!</p>", unsafe_allow_html=True)
     url = st.text_input("Enter URL to analyze:", placeholder="https://example.com")
     port_scan_enabled = st.checkbox("Perform Port Scan (for open ports)", value=False)
@@ -322,9 +334,17 @@ def main():
                 st.subheader("Technical Details")
                 st.markdown("<div class='details-list'><ul>", unsafe_allow_html=True)
                 for key, value in details.items():
-                    if key != 'found_paths':
+                    if key not in ['found_paths', 'lookalike_brands']:
                         st.markdown(f"<li><strong>{key}:</strong> {value}</li>", unsafe_allow_html=True)
                 st.markdown("</ul></div>", unsafe_allow_html=True)
+
+                # --- Typosquatting & Lookalike Domain UI ---
+                st.subheader("Typosquatting & Lookalike Domain Check")
+                if details.get('lookalike_brands'):
+                    st.warning(f"This domain is a lookalike or typo of: {', '.join(details['lookalike_brands'])}")
+                else:
+                    st.success("No lookalike or typosquatting detected for popular brands.")
+
                 st.subheader("Discovered Paths")
                 if details.get('found_paths'):
                     st.markdown("<div class='paths-list'><ul>", unsafe_allow_html=True)
@@ -334,37 +354,27 @@ def main():
                 else:
                     st.warning("No common paths discovered")
                 # --- Port Scan Section ---
-                
-                    if port_scan_enabled:
-                        st.subheader(f"Port Scan Results ({port_range[0]}–{port_range[1]})")
-                        parsed_url = urlparse(url)
-                        domain = parsed_url.netloc
-                        with st.spinner("Scanning ports... (this may take a while)"):
-                            open_ports, closed_ports, error = port_scan(domain, port_range)
-    
-                            if error:
-                               st.error(error)
-                            else:
-                              st.markdown("<div class='ports-list'><ul>", unsafe_allow_html=True)
-        
-                                 # Show open ports
-                              if open_ports:
-                                 st.markdown("<li><strong>Open Ports:</strong></li>", unsafe_allow_html=True)
-                                 for port in open_ports:
+                if port_scan_enabled:
+                    st.subheader(f"Port Scan Results ({port_range[0]}–{port_range[1]})")
+                    parsed_url = urlparse(url)
+                    domain = parsed_url.netloc
+                    with st.spinner("Scanning ports... (this may take a while)"):
+                        open_ports, closed_ports, error = port_scan(domain, port_range)
+                        if error:
+                            st.error(error)
+                        else:
+                            st.markdown("<div class='ports-list'><ul>", unsafe_allow_html=True)
+                            if open_ports:
+                                st.markdown("<li><strong>Open Ports:</strong></li>", unsafe_allow_html=True)
+                                for port in open_ports:
                                     st.markdown(f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:green;'>OPEN</span></li>", unsafe_allow_html=True)
-        
-                                     # Show closed ports
-                                    if closed_ports:
-                                        st.markdown("<li><strong>Closed Ports:</strong></li>", unsafe_allow_html=True)
-                                 for port in closed_ports[:20]:  # Limit to first 20 to avoid overwhelming the UI
-                                  st.markdown(f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:red;'>CLOSED</span></li>", unsafe_allow_html=True)
-            
-                                 if len(closed_ports) > 20:
-                                  st.markdown(f"<li style='margin-left:20px;'><em>...and {len(closed_ports)-20} more closed ports</em></li>", unsafe_allow_html=True)
-        
-                                 st.markdown("</ul></div>", unsafe_allow_html=True)
-
-
+                            if closed_ports:
+                                st.markdown("<li><strong>Closed Ports:</strong></li>", unsafe_allow_html=True)
+                                for port in closed_ports[:20]:
+                                    st.markdown(f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:red;'>CLOSED</span></li>", unsafe_allow_html=True)
+                                if len(closed_ports) > 20:
+                                    st.markdown(f"<li style='margin-left:20px;'><em>...and {len(closed_ports)-20} more closed ports</em></li>", unsafe_allow_html=True)
+                            st.markdown("</ul></div>", unsafe_allow_html=True)
                 st.subheader("Feedback")
                 feedback = st.radio("Was this prediction accurate?", ("Yes", "No"), horizontal=True)
                 comments = st.text_area("Additional Comments")
