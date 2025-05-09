@@ -12,6 +12,34 @@ import os
 from dotenv import load_dotenv
 import datetime
 
+# --- Screenshot dependencies ---
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
+from PIL import Image
+import io
+import time
+
+# --- Screenshot Helper ---
+def take_screenshot(url, width=1200, height=900, timeout=10):
+    try:
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument(f"--window-size={width},{height}")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        driver = webdriver.Chrome(ChromeDriverManager().install(), options=chrome_options)
+        driver.set_page_load_timeout(timeout)
+        driver.get(url)
+        time.sleep(2)  # Give time for page to load
+        png = driver.get_screenshot_as_png()
+        driver.quit()
+        image = Image.open(io.BytesIO(png))
+        return image, None
+    except Exception as e:
+        return None, str(e)
+
 # --- Load VirusTotal API Key Securely ---
 load_dotenv()
 VT_API_KEY = os.getenv("VT_API_KEY", "")
@@ -361,6 +389,18 @@ def main():
                             st.markdown(f"[View full report on VirusTotal]({vt_result['permalink']})")
                     else:
                         st.info("VirusTotal threat intelligence available if you set your API key in the .env file.")
+
+                    # --- Website Screenshot ---
+                    st.subheader("Website Screenshot")
+                    screenshot = None
+                    screenshot_error = None
+                    if url.lower().startswith("http"):
+                        with st.spinner("Taking screenshot..."):
+                            screenshot, screenshot_error = take_screenshot(url)
+                    if screenshot:
+                        st.image(screenshot, caption="Website Screenshot", use_column_width=True)
+                    else:
+                        st.info("Screenshot unavailable." + (f" Error: {screenshot_error}" if screenshot_error else ""))
 
                     st.subheader("Technical Details")
                     st.markdown("<div class='details-list'><ul>", unsafe_allow_html=True)

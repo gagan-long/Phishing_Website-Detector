@@ -5,3 +5,6 @@ python-whois
 urllib3
 tldextract
 python-dotenv
+selenium
+webdriver-manager
+Pillow
