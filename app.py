@@ -36,7 +36,7 @@ body {
     margin-bottom: 20px;
     text-align: center;
 }
-.details-list, .paths-list {
+.details-list, .paths-list, .ports-list {
     background: white;
     border-radius: 10px;
     padding: 20px;
@@ -45,7 +45,7 @@ body {
     overflow-y: auto;
     margin-bottom: 24px;
 }
-.details-list ul, .paths-list ul {
+.details-list ul, .paths-list ul, .ports-list ul {
     padding-left: 18px;
 }
 </style>
@@ -184,10 +184,45 @@ def extract_details(url):
         details['error'] = str(e)
     return details
 
+# --- Port Scan Feature ---
+def port_scan(target, port_range=(1, 1024), max_threads=100):
+    open_ports = []
+    target_ip = None
+    try:
+        target_ip = socket.gethostbyname(target)
+    except Exception:
+        return [], "Could not resolve domain to IP."
+    def scan_port(port):
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(0.5)
+        try:
+            result = s.connect_ex((target_ip, port))
+            if result == 0:
+                open_ports.append(port)
+        except:
+            pass
+        finally:
+            s.close()
+    threads = []
+    for port in range(port_range[0], port_range[1]+1):
+        t = ThreadPoolExecutor(max_workers=max_threads)
+        t.submit(scan_port, port)
+        t.shutdown(wait=True)
+    return sorted(open_ports), None
+
 def main():
     st.markdown("<h1 style='color:#ff4b4b;'>🛡️ Phishing Website Detector</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#31333f;font-size:1.1rem;'>Analyze any website for phishing risk, sensitive directories, and more!</p>", unsafe_allow_html=True)
     url = st.text_input("Enter URL to analyze:", placeholder="https://example.com")
+    port_scan_enabled = st.checkbox("Perform Port Scan (for open ports)", value=False)
+    port_range = (1, 1024)
+    if port_scan_enabled:
+        colp1, colp2 = st.columns(2)
+        with colp1:
+            port_start = st.number_input("Port range start", min_value=1, max_value=65535, value=1)
+        with colp2:
+            port_end = st.number_input("Port range end", min_value=1, max_value=65535, value=1024)
+        port_range = (int(port_start), int(port_end))
     if st.button("Analyze"):
         if url:
             with st.spinner("Analyzing website..."):
@@ -222,12 +257,27 @@ def main():
                     st.markdown("</ul></div>", unsafe_allow_html=True)
                 else:
                     st.warning("No common paths discovered")
+                # --- Port Scan Section ---
+                if port_scan_enabled:
+                    st.subheader(f"Port Scan Results ({port_range[0]}–{port_range[1]})")
+                    parsed_url = urlparse(url)
+                    domain = parsed_url.netloc
+                    with st.spinner("Scanning ports... (this may take a while)"):
+                        open_ports, error = port_scan(domain, port_range)
+                    if error:
+                        st.error(error)
+                    elif open_ports:
+                        st.markdown("<div class='ports-list'><ul>", unsafe_allow_html=True)
+                        for port in open_ports:
+                            st.markdown(f"<li><strong>Port {port}:</strong> <span style='color:green;'>OPEN</span></li>", unsafe_allow_html=True)
+                        st.markdown("</ul></div>", unsafe_allow_html=True)
+                    else:
+                        st.info("No open ports found in the specified range.")
                 st.subheader("Feedback")
                 feedback = st.radio("Was this prediction accurate?", ("Yes", "No"), horizontal=True)
                 comments = st.text_area("Additional Comments")
                 if st.button("Submit Feedback"):
                     st.success("Thank you for your feedback! (Submitted: {})".format(feedback))
-                    # --- Auto-update blacklist if user marks as phishing ---
                     if feedback == "No":
                         parsed_url = urlparse(url)
                         domain = parsed_url.netloc
