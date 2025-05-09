@@ -10,6 +10,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 import os
 from dotenv import load_dotenv
+import datetime
 
 # --- Load VirusTotal API Key Securely ---
 load_dotenv()
@@ -164,21 +165,59 @@ def extract_details(url):
             details['whois_error'] = str(e)
             details['domain_age'] = 'N/A'
             details['registrar'] = 'N/A'
+
+        # --- SSL/TLS Certificate Transparency ---
         if parsed_url.scheme == 'https':
             try:
                 context = ssl.create_default_context()
                 with socket.create_connection((domain, 443), timeout=5) as sock:
                     with context.wrap_socket(sock, server_hostname=domain) as ssock:
                         cert = ssock.getpeercert()
-                        details['ssl_issuer'] = str(cert.get('issuer', 'N/A'))
-                        details['ssl_valid'] = str(cert.get('notAfter', 'N/A'))
+                        issuer = cert.get('issuer', (('N/A',),))[0]
+                        issuer_name = " ".join([x[1] for x in issuer]) if isinstance(issuer, tuple) else str(issuer)
+                        not_before = cert.get('notBefore', 'N/A')
+                        not_after = cert.get('notAfter', 'N/A')
+                        details['ssl_issuer'] = issuer_name
+                        details['ssl_valid_from'] = not_before
+                        details['ssl_valid_to'] = not_after
+                        # Calculate certificate age
+                        try:
+                            valid_from_dt = datetime.datetime.strptime(not_before, "%b %d %H:%M:%S %Y %Z")
+                            valid_to_dt = datetime.datetime.strptime(not_after, "%b %d %H:%M:%S %Y %Z")
+                            now = datetime.datetime.utcnow()
+                            cert_age_days = (now - valid_from_dt).days
+                            details['ssl_age_days'] = cert_age_days
+                            details['ssl_is_new'] = "Yes" if cert_age_days <= 30 else "No"
+                            details['ssl_days_left'] = (valid_to_dt - now).days
+                        except Exception as e:
+                            details['ssl_age_days'] = 'N/A'
+                            details['ssl_is_new'] = 'N/A'
+                            details['ssl_days_left'] = 'N/A'
+                        # Self-signed or suspicious issuer
+                        if "let's encrypt" in issuer_name.lower():
+                            details['ssl_issuer_warning'] = "Let's Encrypt (free cert, check carefully)"
+                        elif "self" in issuer_name.lower():
+                            details['ssl_issuer_warning'] = "Self-signed certificate"
+                        else:
+                            details['ssl_issuer_warning'] = ""
             except Exception as e:
                 details['ssl_error'] = str(e)
                 details['ssl_issuer'] = 'N/A'
-                details['ssl_valid'] = 'N/A'
+                details['ssl_valid_from'] = 'N/A'
+                details['ssl_valid_to'] = 'N/A'
+                details['ssl_age_days'] = 'N/A'
+                details['ssl_is_new'] = 'N/A'
+                details['ssl_days_left'] = 'N/A'
+                details['ssl_issuer_warning'] = ''
         else:
             details['ssl_issuer'] = 'N/A'
-            details['ssl_valid'] = 'N/A'
+            details['ssl_valid_from'] = 'N/A'
+            details['ssl_valid_to'] = 'N/A'
+            details['ssl_age_days'] = 'N/A'
+            details['ssl_is_new'] = 'N/A'
+            details['ssl_days_left'] = 'N/A'
+            details['ssl_issuer_warning'] = ''
+
         try:
             response = requests.get(parsed_url.scheme + '://' + parsed_url.netloc + '/favicon.ico', timeout=5)
             details['has_favicon'] = 'Yes' if response.status_code == 200 else 'No'
@@ -329,6 +368,19 @@ def main():
                         if key not in ['found_paths', 'lookalike_brands']:
                             st.markdown(f"<li><strong>{key}:</strong> {value}</li>", unsafe_allow_html=True)
                     st.markdown("</ul></div>", unsafe_allow_html=True)
+
+                    st.subheader("SSL/TLS Certificate Transparency")
+                    if details.get('ssl_issuer') and details['ssl_issuer'] != 'N/A':
+                        st.info(f"Issuer: **{details['ssl_issuer']}**")
+                        st.write(f"Valid from: `{details['ssl_valid_from']}` to `{details['ssl_valid_to']}`")
+                        st.write(f"Certificate age: **{details['ssl_age_days']} days**")
+                        st.write(f"Days left until expiry: **{details['ssl_days_left']} days**")
+                        if details['ssl_is_new'] == "Yes":
+                            st.warning("⚠️ Certificate is very new (issued in the last 30 days).")
+                        if details.get('ssl_issuer_warning'):
+                            st.warning(f"⚠️ {details['ssl_issuer_warning']}")
+                    else:
+                        st.info("No SSL/TLS certificate details available.")
 
                     st.subheader("Typosquatting & Lookalike Domain Check")
                     if details.get('lookalike_brands'):
