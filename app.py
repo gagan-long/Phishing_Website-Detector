@@ -256,11 +256,13 @@ def extract_details(url):
 # --- Port Scan Feature ---
 def port_scan(target, port_range=(1, 1024), max_threads=100):
     open_ports = []
+    closed_ports = []
     target_ip = None
     try:
         target_ip = socket.gethostbyname(target)
     except Exception:
-        return [], "Could not resolve domain to IP."
+        return [], [], "Could not resolve domain to IP."
+    
     def scan_port(port):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(0.5)
@@ -268,16 +270,21 @@ def port_scan(target, port_range=(1, 1024), max_threads=100):
             result = s.connect_ex((target_ip, port))
             if result == 0:
                 open_ports.append(port)
+            else:
+                closed_ports.append(port)
         except:
-            pass
+            closed_ports.append(port)
         finally:
             s.close()
+    
     threads = []
     for port in range(port_range[0], port_range[1]+1):
         t = ThreadPoolExecutor(max_workers=max_threads)
         t.submit(scan_port, port)
         t.shutdown(wait=True)
-    return sorted(open_ports), None
+    
+    return sorted(open_ports), sorted(closed_ports), None
+
 
 def main():
     st.markdown("<h1 style='color:#ff4b4b;'>🛡️ Phishing Website Detector, Port Scaner</h1>", unsafe_allow_html=True)
@@ -327,21 +334,37 @@ def main():
                 else:
                     st.warning("No common paths discovered")
                 # --- Port Scan Section ---
-                if port_scan_enabled:
-                    st.subheader(f"Port Scan Results ({port_range[0]}–{port_range[1]})")
-                    parsed_url = urlparse(url)
-                    domain = parsed_url.netloc
-                    with st.spinner("Scanning ports... (this may take a while)"):
-                        open_ports, error = port_scan(domain, port_range)
-                    if error:
-                        st.error(error)
-                    elif open_ports:
-                        st.markdown("<div class='ports-list'><ul>", unsafe_allow_html=True)
-                        for port in open_ports:
-                            st.markdown(f"<li><strong>Port {port}:</strong> <span style='color:green;'>OPEN</span></li>", unsafe_allow_html=True)
-                        st.markdown("</ul></div>", unsafe_allow_html=True)
-                    else:
-                        st.info("No open ports found in the specified range.")
+                
+                    if port_scan_enabled:
+                        st.subheader(f"Port Scan Results ({port_range[0]}–{port_range[1]})")
+                        parsed_url = urlparse(url)
+                        domain = parsed_url.netloc
+                        with st.spinner("Scanning ports... (this may take a while)"):
+                            open_ports, closed_ports, error = port_scan(domain, port_range)
+    
+                            if error:
+                               st.error(error)
+                            else:
+                              st.markdown("<div class='ports-list'><ul>", unsafe_allow_html=True)
+        
+                                 # Show open ports
+                              if open_ports:
+                                 st.markdown("<li><strong>Open Ports:</strong></li>", unsafe_allow_html=True)
+                                 for port in open_ports:
+                                    st.markdown(f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:green;'>OPEN</span></li>", unsafe_allow_html=True)
+        
+                                     # Show closed ports
+                                    if closed_ports:
+                                        st.markdown("<li><strong>Closed Ports:</strong></li>", unsafe_allow_html=True)
+                                 for port in closed_ports[:20]:  # Limit to first 20 to avoid overwhelming the UI
+                                  st.markdown(f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:red;'>CLOSED</span></li>", unsafe_allow_html=True)
+            
+                                 if len(closed_ports) > 20:
+                                  st.markdown(f"<li style='margin-left:20px;'><em>...and {len(closed_ports)-20} more closed ports</em></li>", unsafe_allow_html=True)
+        
+                                 st.markdown("</ul></div>", unsafe_allow_html=True)
+
+
                 st.subheader("Feedback")
                 feedback = st.radio("Was this prediction accurate?", ("Yes", "No"), horizontal=True)
                 comments = st.text_area("Additional Comments")
