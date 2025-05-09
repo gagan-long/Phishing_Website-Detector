@@ -4,3 +4,4 @@ beautifulsoup4
 python-whois
 urllib3
 tldextract
+python-dotenv

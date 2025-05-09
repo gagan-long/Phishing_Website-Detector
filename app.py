@@ -9,321 +9,39 @@ from bs4 import BeautifulSoup
 import json
 from concurrent.futures import ThreadPoolExecutor
 import os
+from dotenv import load_dotenv
 
-# --- Custom CSS for Modern Look ---
-st.markdown("""
-<style>
-[data-testid="stAppViewContainer"] {
-    background: linear-gradient(135deg, #f0f2f6 0%, #e9ecef 100%);
-}
-h1, h2, h3, h4 {
-    color: #ff4b4b !important;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-}
-.stButton > button {
-    background-color: #ff4b4b;
-    color: #fff;
-    font-weight: 600;
-    border-radius: 8px;
-    padding: 10px 28px;
-    border: none;
-    box-shadow: 0 2px 6px rgba(255,75,75,0.08);
-    transition: background 0.2s, box-shadow 0.2s;
-    font-size: 1.1rem;
-}
-.stButton > button:hover {
-    background: #d73737;
-    box-shadow: 0 4px 12px rgba(255,75,75,0.15);
-}
-.metric-container {
-    background: #fff;
-    border-radius: 12px;
-    padding: 22px 18px 18px 18px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.07);
-    margin-bottom: 22px;
-    text-align: center;
-    border-left: 6px solid #ff4b4b;
-}
-.metric-container h3 {
-    color: #31333f;
-    margin-bottom: 8px;
-    font-size: 1.2rem;
-    font-weight: 600;
-}
-.metric-container p {
-    font-size: 2.1rem;
-    font-weight: bold;
-    margin: 0;
-}
-.details-list, .paths-list, .ports-list {
-    background: #fff;
-    border-radius: 12px;
-    padding: 22px;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.07);
-    max-height: 320px;
-    overflow-y: auto;
-    margin-bottom: 26px;
-    font-size: 1.04rem;
-}
-.details-list ul, .paths-list ul, .ports-list ul {
-    padding-left: 22px;
-    margin-bottom: 0;
-}
-.details-list li, .paths-list li, .ports-list li {
-    margin-bottom: 8px;
-}
-.paths-list code, .ports-list code {
-    background: #f8f9fa;
-    color: #d6336c;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 1.02rem;
-}
-[data-testid="stRadio"], .stTextArea textarea {
-    font-size: 1.08rem;
-}
-.stTextArea textarea {
-    border-radius: 8px;
-    border: 1.5px solid #ff4b4b;
-    padding: 10px;
-    background: #f8f9fa;
-    font-family: inherit;
-}
-.stMarkdown h2, .stMarkdown h3, .stMarkdown h4 {
-    color: #ff4b4b !important;
-    font-weight: 700;
-    margin-top: 18px;
-}
-.stAlert {
-    border-radius: 10px !important;
-    font-size: 1.04rem;
-}
-footer {visibility: hidden;}
-</style>
-""", unsafe_allow_html=True)
+# --- Load VirusTotal API Key Securely ---
+load_dotenv()
+VT_API_KEY = os.getenv("VT_API_KEY", "")
 
-# --- Blacklist Data ---
-def load_blacklist():
+# --- VirusTotal Threat Intelligence Function ---
+def check_virustotal_url(url, api_key):
+    if not api_key:
+        return {"error": "No VirusTotal API key provided."}
+    vt_url = "https://www.virustotal.com/api/v3/urls"
     try:
-        with open('blacklist.json', 'r') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        return []
-    except Exception:
-        return []
-
-def save_blacklist(blacklist):
-    with open('blacklist.json', 'w') as f:
-        json.dump(blacklist, f, indent=2)
-
-def add_to_blacklist(domain):
-    blacklist = load_blacklist()
-    if domain not in blacklist:
-        blacklist.append(domain)
-        save_blacklist(blacklist)
-        st.info(f"Domain {domain} has been added to the blacklist.")
-
-# --- Typosquatting & Lookalike Detection ---
-POPULAR_BRANDS = [
-    "google.com", "facebook.com", "apple.com", "amazon.com", "microsoft.com",
-    "paypal.com", "bankofamerica.com", "wellsfargo.com", "github.com", "twitter.com"
-]
-
-def generate_typos(domain):
-    typos = set()
-    if '.' in domain:
-        name, tld = domain.rsplit('.', 1)
-    else:
-        name, tld = domain, ''
-    # Missing dot
-    typos.add(name.replace('.', '') + ('.' + tld if tld else ''))
-    # Swapped adjacent letters
-    for i in range(len(name) - 1):
-        swapped = list(name)
-        swapped[i], swapped[i+1] = swapped[i+1], swapped[i]
-        typos.add(''.join(swapped) + ('.' + tld if tld else ''))
-    # Missing letter
-    for i in range(len(name)):
-        typos.add(name[:i] + name[i+1:] + ('.' + tld if tld else ''))
-    return typos
-
-def calculate_risk_score(details):
-    score = 0
-    if details.get('has_at_symbol') == 'Yes':
-        score += 5
-    if details.get('url_length', 0) > 50:
-        score += 10
-    if details.get('uses_https') == 'No':
-        score += 15
-    if details.get('domain_age') == 'N/A':
-        score += 10
-    if details.get('has_ip_address') == 'Yes':
-        score += 20
-    if details.get('has_login_form') == 'Yes':
-        score += 25
-    if details.get('requests_sensitive_info') == 'Yes':
-        score += 30
-    if details.get('has_unusual_scripts') == 'Yes':
-        score += 20
-    return score
-
-def crawl_website(target_url):
-    base_url = f"{urlparse(target_url).scheme}://{urlparse(target_url).netloc}"
-    session = requests.Session()
-    found_paths = set(['/'])
-    def check_path(path):
-        try:
-            full_url = urljoin(base_url, path)
-            response = session.head(full_url, timeout=3, allow_redirects=True)
-            if response.status_code < 400:
-                return path
-        except:
-            return None
-    common_dirs = [
-        'admin', 'login', 'wp-admin', 'wp-content', 
-        'images', 'css', 'js', 'assets', 'uploads',
-        'backup', 'api', 'secret', 'private'
-    ]
-    common_files = [
-        'robots.txt', 'sitemap.xml', 'config.php',
-        '.env', 'package.json', 'web.config'
-    ]
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        dir_paths = [f"/{d}/" for d in common_dirs]
-        found_paths.update(filter(None, executor.map(check_path, dir_paths)))
-        file_paths = [f"/{f}" for f in common_files]
-        found_paths.update(filter(None, executor.map(check_path, file_paths)))
-    return sorted(found_paths)
-
-def extract_details(url):
-    details = {}
-    try:
-        parsed_url = urlparse(url)
-        details['has_at_symbol'] = 'Yes' if '@' in url else 'No'
-        details['url_length'] = len(url)
-        details['found_paths'] = crawl_website(url)
-        details['uses_https'] = 'Yes' if parsed_url.scheme == 'https' else 'No'
-        domain = parsed_url.netloc
-
-        # --- Typosquatting & lookalike detection ---
-        domain_lower = domain.lower()
-        typos = generate_typos(domain_lower)
-        lookalike_matches = []
-        for brand in POPULAR_BRANDS:
-            brand_base = brand.lower()
-            if (domain_lower == brand_base or
-                domain_lower.replace('www.', '') == brand_base or
-                brand_base in typos):
-                lookalike_matches.append(brand)
-        details['lookalike_brands'] = lookalike_matches if lookalike_matches else None
-
-        try:
-            w = whois.whois(domain)
-            details['domain_age'] = str(w.creation_date)
-            details['registrar'] = w.registrar if hasattr(w, 'registrar') else 'N/A'
-        except Exception as e:
-            details['whois_error'] = str(e)
-            details['domain_age'] = 'N/A'
-            details['registrar'] = 'N/A'
-        if parsed_url.scheme == 'https':
-            try:
-                context = ssl.create_default_context()
-                with socket.create_connection((domain, 443), timeout=5) as sock:
-                    with context.wrap_socket(sock, server_hostname=domain) as ssock:
-                        cert = ssock.getpeercert()
-                        details['ssl_issuer'] = str(cert.get('issuer', 'N/A'))
-                        details['ssl_valid'] = str(cert.get('notAfter', 'N/A'))
-            except Exception as e:
-                details['ssl_error'] = str(e)
-                details['ssl_issuer'] = 'N/A'
-                details['ssl_valid'] = 'N/A'
-        else:
-            details['ssl_issuer'] = 'N/A'
-            details['ssl_valid'] = 'N/A'
-        try:
-            response = requests.get(parsed_url.scheme + '://' + parsed_url.netloc + '/favicon.ico', timeout=5)
-            details['has_favicon'] = 'Yes' if response.status_code == 200 else 'No'
-        except Exception as e:
-            details['favicon_error'] = str(e)
-            details['has_favicon'] = 'No'
-        details['has_ip_address'] = 'Yes' if re.search(r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}', parsed_url.netloc) else 'No'
-        details['is_long_url'] = 'Yes' if len(url) > 50 else 'No'
-        details['has_unusual_chars'] = 'Yes' if re.search(r'[^a-zA-Z0-9\-\._~:\/\?#\[\]@!\$&\'\(\)\*\+\,\;\=]', url) else 'No'
-        try:
-            response = requests.get(url, timeout=5)
-            soup = BeautifulSoup(response.text, 'html.parser')
-            login_form = soup.find('form', {'action': re.compile(r'login', re.IGNORECASE)})
-            details['has_login_form'] = 'Yes' if login_form else 'No'
-            sensitive_info_patterns = [r'credit card', r'social security number', r'ssn', r'cvv']
-            content = soup.get_text().lower()
-            details['requests_sensitive_info'] = 'Yes' if any(re.search(pattern, content) for pattern in sensitive_info_patterns) else 'No'
-            script_tags = soup.find_all('script')
-            details['has_unusual_scripts'] = 'Yes' if any('eval(' in script.text for script in script_tags) else 'No'
-        except Exception as e:
-            details['content_error'] = str(e)
-            details['has_login_form'] = 'N/A'
-            details['requests_sensitive_info'] = 'N/A'
-            details['has_unusual_scripts'] = 'N/A'
-        details['is_blacklisted'] = 'Yes' if domain in load_blacklist() else 'No'
+        resp = requests.post(vt_url, headers={"x-apikey": api_key}, data={"url": url})
+        if resp.status_code not in (200, 201):
+            return {"error": f"VirusTotal API error: {resp.status_code}"}
+        scan_id = resp.json()["data"]["id"]
+        report_url = f"{vt_url}/{scan_id}"
+        report = requests.get(report_url, headers={"x-apikey": api_key})
+        if report.status_code != 200:
+            return {"error": f"VirusTotal API error: {report.status_code}"}
+        data = report.json()["data"]["attributes"]
+        stats = data["last_analysis_stats"]
+        verdict = "malicious" if stats.get("malicious", 0) > 0 else "suspicious" if stats.get("suspicious", 0) > 0 else "clean"
+        return {
+            "verdict": verdict,
+            "stats": stats,
+            "scan_date": data.get("last_analysis_date"),
+            "permalink": f"https://www.virustotal.com/gui/url/{scan_id}"
+        }
     except Exception as e:
-        details['error'] = str(e)
-    return details
+        return {"error": str(e)}
 
-# --- Port Scan Feature ---
-def port_scan(target, port_range=(1, 1024), max_threads=100):
-    open_ports = []
-    closed_ports = []
-    target_ip = None
-    try:
-        target_ip = socket.gethostbyname(target)
-    except Exception:
-        return [], [], "Could not resolve domain to IP."
-    def scan_port(port):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(0.5)
-        try:
-            result = s.connect_ex((target_ip, port))
-            if result == 0:
-                open_ports.append(port)
-            else:
-                closed_ports.append(port)
-        except:
-            closed_ports.append(port)
-        finally:
-            s.close()
-    threads = []
-    for port in range(port_range[0], port_range[1]+1):
-        t = ThreadPoolExecutor(max_workers=max_threads)
-        t.submit(scan_port, port)
-        t.shutdown(wait=True)
-    return sorted(open_ports), sorted(closed_ports), None
-
-# --- Text/Message Analysis Feature ---
-def analyze_text(text):
-    phishing_keywords = [
-        "urgent", "verify your account", "update your information", "click here", "password", "login", "bank", "account suspended",
-        "security alert", "unusual activity", "confirm", "reset", "limited time", "act now", "win", "free", "prize", "invoice"
-    ]
-    url_pattern = r'(https?://[^\s]+)'
-    found_keywords = [kw for kw in phishing_keywords if kw in text.lower()]
-    found_links = re.findall(url_pattern, text)
-    found_brands = [brand for brand in POPULAR_BRANDS if brand.split('.')[0] in text.lower()]
-    risk_score = len(found_keywords)*10 + len(found_links)*15 + len(found_brands)*20
-    if risk_score > 100:
-        risk_score = 100
-    if risk_score > 50:
-        risk_label = "🔴 Highly Likely Phishing"
-    elif risk_score > 30:
-        risk_label = "🟡 Likely Phishing"
-    else:
-        risk_label = "🟢 Potentially Safe"
-    return {
-        "risk_score": risk_score,
-        "risk_label": risk_label,
-        "keywords": found_keywords,
-        "links": found_links,
-        "brands": found_brands
-    }
+# ... (rest of your code, unchanged, until main) ...
 
 def main():
     st.markdown("<h1 style='color:#ff4b4b;'>🛡️ Phishing Website Detector, Port & Text Scanner</h1>", unsafe_allow_html=True)
@@ -363,6 +81,27 @@ def main():
                         st.markdown(f"<div class='metric-container'><h3>Risk Score</h3><p style='font-size: 2rem; font-weight: bold;'>{risk_score}/100</p></div>", unsafe_allow_html=True)
                     with col2:
                         st.markdown(f"<div class='metric-container'><h3>Prediction</h3><p style='font-size: 2rem; font-weight: bold; color: {pred_color};'>{prediction}</p></div>", unsafe_allow_html=True)
+
+                    # --- VirusTotal Threat Intelligence ---
+                    st.subheader("VirusTotal Threat Intelligence")
+                    if VT_API_KEY:
+                        vt_result = check_virustotal_url(url, VT_API_KEY)
+                        if vt_result.get("error"):
+                            st.info(f"VirusTotal: {vt_result['error']}")
+                        else:
+                            verdict = vt_result["verdict"]
+                            stats = vt_result["stats"]
+                            vt_color = "#dc3545" if verdict == "malicious" else "#ffc107" if verdict == "suspicious" else "#28a745"
+                            st.markdown(
+                                f"<div class='metric-container'><h3>VirusTotal Verdict</h3>"
+                                f"<p style='font-size: 1.5rem; font-weight: bold; color: {vt_color};'>{verdict.title()}</p></div>",
+                                unsafe_allow_html=True)
+                            st.write(f"**Malicious:** {stats.get('malicious',0)} | **Suspicious:** {stats.get('suspicious',0)} | "
+                                     f"**Harmless:** {stats.get('harmless',0)} | **Undetected:** {stats.get('undetected',0)}")
+                            st.markdown(f"[View full report on VirusTotal]({vt_result['permalink']})")
+                    else:
+                        st.info("VirusTotal threat intelligence available if you set your API key in the .env file.")
+
                     st.subheader("Technical Details")
                     st.markdown("<div class='details-list'><ul>", unsafe_allow_html=True)
                     for key, value in details.items():
