@@ -298,94 +298,155 @@ def port_scan(target, port_range=(1, 1024), max_threads=100):
         t.shutdown(wait=True)
     return sorted(open_ports), sorted(closed_ports), None
 
+# --- Text/Message Analysis Feature ---
+def analyze_text(text):
+    phishing_keywords = [
+        "urgent", "verify your account", "update your information", "click here", "password", "login", "bank", "account suspended",
+        "security alert", "unusual activity", "confirm", "reset", "limited time", "act now", "win", "free", "prize", "invoice"
+    ]
+    url_pattern = r'(https?://[^\s]+)'
+    found_keywords = [kw for kw in phishing_keywords if kw in text.lower()]
+    found_links = re.findall(url_pattern, text)
+    found_brands = [brand for brand in POPULAR_BRANDS if brand.split('.')[0] in text.lower()]
+    risk_score = len(found_keywords)*10 + len(found_links)*15 + len(found_brands)*20
+    if risk_score > 100:
+        risk_score = 100
+    if risk_score > 50:
+        risk_label = "🔴 Highly Likely Phishing"
+    elif risk_score > 30:
+        risk_label = "🟡 Likely Phishing"
+    else:
+        risk_label = "🟢 Potentially Safe"
+    return {
+        "risk_score": risk_score,
+        "risk_label": risk_label,
+        "keywords": found_keywords,
+        "links": found_links,
+        "brands": found_brands
+    }
+
 def main():
-    st.markdown("<h1 style='color:#ff4b4b;'>🛡️ Phishing Website Detector, Port Scanner</h1>", unsafe_allow_html=True)
-    st.markdown("<p style='color:#31333f;font-size:1.1rem;'>Analyze any website for phishing risk, sensitive directories, and more!</p>", unsafe_allow_html=True)
-    url = st.text_input("Enter URL to analyze:", placeholder="https://example.com")
-    port_scan_enabled = st.checkbox("Perform Port Scan (for open ports)", value=False)
-    port_range = (1, 1024)
-    if port_scan_enabled:
-        colp1, colp2 = st.columns(2)
-        with colp1:
-            port_start = st.number_input("Port range start", min_value=1, max_value=65535, value=1)
-        with colp2:
-            port_end = st.number_input("Port range end", min_value=1, max_value=65535, value=1024)
-        port_range = (int(port_start), int(port_end))
-    if st.button("Analyze"):
-        if url:
-            with st.spinner("Analyzing website..."):
-                details = extract_details(url)
-                risk_score = calculate_risk_score(details)
-                if risk_score > 50:
-                    prediction = "🔴 Highly Likely Phishing"
-                    pred_color = "#dc3545"
-                elif risk_score > 30:
-                    prediction = "🟡 Likely Phishing"
-                    pred_color = "#ffc107"
-                else:
-                    prediction = "🟢 Potentially Safe"
-                    pred_color = "#28a745"
-                st.subheader("Analysis Results")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown(f"<div class='metric-container'><h3>Risk Score</h3><p style='font-size: 2rem; font-weight: bold;'>{risk_score}/100</p></div>", unsafe_allow_html=True)
-                with col2:
-                    st.markdown(f"<div class='metric-container'><h3>Prediction</h3><p style='font-size: 2rem; font-weight: bold; color: {pred_color};'>{prediction}</p></div>", unsafe_allow_html=True)
-                st.subheader("Technical Details")
-                st.markdown("<div class='details-list'><ul>", unsafe_allow_html=True)
-                for key, value in details.items():
-                    if key not in ['found_paths', 'lookalike_brands']:
-                        st.markdown(f"<li><strong>{key}:</strong> {value}</li>", unsafe_allow_html=True)
-                st.markdown("</ul></div>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color:#ff4b4b;'>🛡️ Phishing Website Detector, Port & Text Scanner</h1>", unsafe_allow_html=True)
+    st.markdown("<p style='color:#31333f;font-size:1.1rem;'>Analyze a website, suspicious text, or message for phishing risk!</p>", unsafe_allow_html=True)
 
-                # --- Typosquatting & Lookalike Domain UI ---
-                st.subheader("Typosquatting & Lookalike Domain Check")
-                if details.get('lookalike_brands'):
-                    st.warning(f"This domain is a lookalike or typo of: {', '.join(details['lookalike_brands'])}")
-                else:
-                    st.success("No lookalike or typosquatting detected for popular brands.")
+    tab1, tab2 = st.tabs(["🔗 Website/Domain Analysis", "✉️ Text/Message Analysis"])
 
-                st.subheader("Discovered Paths")
-                if details.get('found_paths'):
-                    st.markdown("<div class='paths-list'><ul>", unsafe_allow_html=True)
-                    for path in details['found_paths']:
-                        st.markdown(f"<li><code>{url.rstrip('/')}{path}</code></li>", unsafe_allow_html=True)
+    # --- Website/Domain Tab ---
+    with tab1:
+        url = st.text_input("Enter URL to analyze:", placeholder="https://example.com")
+        port_scan_enabled = st.checkbox("Perform Port Scan (for open ports)", value=False)
+        port_range = (1, 1024)
+        if port_scan_enabled:
+            colp1, colp2 = st.columns(2)
+            with colp1:
+                port_start = st.number_input("Port range start", min_value=1, max_value=65535, value=1)
+            with colp2:
+                port_end = st.number_input("Port range end", min_value=1, max_value=65535, value=1024)
+            port_range = (int(port_start), int(port_end))
+        if st.button("Analyze", key="analyze_url"):
+            if url:
+                with st.spinner("Analyzing website..."):
+                    details = extract_details(url)
+                    risk_score = calculate_risk_score(details)
+                    if risk_score > 50:
+                        prediction = "🔴 Highly Likely Phishing"
+                        pred_color = "#dc3545"
+                    elif risk_score > 30:
+                        prediction = "🟡 Likely Phishing"
+                        pred_color = "#ffc107"
+                    else:
+                        prediction = "🟢 Potentially Safe"
+                        pred_color = "#28a745"
+                    st.subheader("Analysis Results")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown(f"<div class='metric-container'><h3>Risk Score</h3><p style='font-size: 2rem; font-weight: bold;'>{risk_score}/100</p></div>", unsafe_allow_html=True)
+                    with col2:
+                        st.markdown(f"<div class='metric-container'><h3>Prediction</h3><p style='font-size: 2rem; font-weight: bold; color: {pred_color};'>{prediction}</p></div>", unsafe_allow_html=True)
+                    st.subheader("Technical Details")
+                    st.markdown("<div class='details-list'><ul>", unsafe_allow_html=True)
+                    for key, value in details.items():
+                        if key not in ['found_paths', 'lookalike_brands']:
+                            st.markdown(f"<li><strong>{key}:</strong> {value}</li>", unsafe_allow_html=True)
                     st.markdown("</ul></div>", unsafe_allow_html=True)
-                else:
-                    st.warning("No common paths discovered")
-                # --- Port Scan Section ---
-                if port_scan_enabled:
-                    st.subheader(f"Port Scan Results ({port_range[0]}–{port_range[1]})")
-                    parsed_url = urlparse(url)
-                    domain = parsed_url.netloc
-                    with st.spinner("Scanning ports... (this may take a while)"):
-                        open_ports, closed_ports, error = port_scan(domain, port_range)
-                        if error:
-                            st.error(error)
-                        else:
-                            st.markdown("<div class='ports-list'><ul>", unsafe_allow_html=True)
-                            if open_ports:
-                                st.markdown("<li><strong>Open Ports:</strong></li>", unsafe_allow_html=True)
-                                for port in open_ports:
-                                    st.markdown(f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:green;'>OPEN</span></li>", unsafe_allow_html=True)
-                            if closed_ports:
-                                st.markdown("<li><strong>Closed Ports:</strong></li>", unsafe_allow_html=True)
-                                for port in closed_ports[:20]:
-                                    st.markdown(f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:red;'>CLOSED</span></li>", unsafe_allow_html=True)
-                                if len(closed_ports) > 20:
-                                    st.markdown(f"<li style='margin-left:20px;'><em>...and {len(closed_ports)-20} more closed ports</em></li>", unsafe_allow_html=True)
-                            st.markdown("</ul></div>", unsafe_allow_html=True)
-                st.subheader("Feedback")
-                feedback = st.radio("Was this prediction accurate?", ("Yes", "No"), horizontal=True)
-                comments = st.text_area("Additional Comments")
-                if st.button("Submit Feedback"):
-                    st.success("Thank you for your feedback! (Submitted: {})".format(feedback))
-                    if feedback == "No":
+
+                    st.subheader("Typosquatting & Lookalike Domain Check")
+                    if details.get('lookalike_brands'):
+                        st.warning(f"This domain is a lookalike or typo of: {', '.join(details['lookalike_brands'])}")
+                    else:
+                        st.success("No lookalike or typosquatting detected for popular brands.")
+
+                    st.subheader("Discovered Paths")
+                    if details.get('found_paths'):
+                        st.markdown("<div class='paths-list'><ul>", unsafe_allow_html=True)
+                        for path in details['found_paths']:
+                            st.markdown(f"<li><code>{url.rstrip('/')}{path}</code></li>", unsafe_allow_html=True)
+                        st.markdown("</ul></div>", unsafe_allow_html=True)
+                    else:
+                        st.warning("No common paths discovered")
+                    # --- Port Scan Section ---
+                    if port_scan_enabled:
+                        st.subheader(f"Port Scan Results ({port_range[0]}–{port_range[1]})")
                         parsed_url = urlparse(url)
                         domain = parsed_url.netloc
-                        add_to_blacklist(domain)
-        else:
-            st.warning("Please enter a valid URL")
+                        with st.spinner("Scanning ports... (this may take a while)"):
+                            open_ports, closed_ports, error = port_scan(domain, port_range)
+                            if error:
+                                st.error(error)
+                            else:
+                                st.markdown("<div class='ports-list'><ul>", unsafe_allow_html=True)
+                                if open_ports:
+                                    st.markdown("<li><strong>Open Ports:</strong></li>", unsafe_allow_html=True)
+                                    for port in open_ports:
+                                        st.markdown(f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:green;'>OPEN</span></li>", unsafe_allow_html=True)
+                                if closed_ports:
+                                    st.markdown("<li><strong>Closed Ports:</strong></li>", unsafe_allow_html=True)
+                                    for port in closed_ports[:20]:
+                                        st.markdown(f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:red;'>CLOSED</span></li>", unsafe_allow_html=True)
+                                    if len(closed_ports) > 20:
+                                        st.markdown(f"<li style='margin-left:20px;'><em>...and {len(closed_ports)-20} more closed ports</em></li>", unsafe_allow_html=True)
+                                st.markdown("</ul></div>", unsafe_allow_html=True)
+                    st.subheader("Feedback")
+                    feedback = st.radio("Was this prediction accurate?", ("Yes", "No"), horizontal=True)
+                    comments = st.text_area("Additional Comments")
+                    if st.button("Submit Feedback", key="feedback_url"):
+                        st.success("Thank you for your feedback! (Submitted: {})".format(feedback))
+                        if feedback == "No":
+                            parsed_url = urlparse(url)
+                            domain = parsed_url.netloc
+                            add_to_blacklist(domain)
+            else:
+                st.warning("Please enter a valid URL")
+
+    # --- Text/Message Tab ---
+    with tab2:
+        st.write("Paste any suspicious email, SMS, or message below to check for phishing risk.")
+        text = st.text_area("Paste your message or email here:", height=180)
+        if st.button("Analyze Text", key="analyze_text"):
+            if text.strip():
+                result = analyze_text(text)
+                st.subheader("Text Analysis Results")
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.markdown(f"<div class='metric-container'><h3>Risk Score</h3><p style='font-size: 2rem; font-weight: bold;'>{result['risk_score']}/100</p></div>", unsafe_allow_html=True)
+                with col2:
+                    color = "#dc3545" if "Highly" in result['risk_label'] else "#ffc107" if "Likely" in result['risk_label'] else "#28a745"
+                    st.markdown(f"<div class='metric-container'><h3>Prediction</h3><p style='font-size: 2rem; font-weight: bold; color: {color};'>{result['risk_label']}</p></div>", unsafe_allow_html=True)
+                st.subheader("Detected Issues")
+                if result['keywords']:
+                    st.warning(f"Phishing keywords detected: {', '.join(result['keywords'])}")
+                else:
+                    st.success("No phishing keywords detected.")
+                if result['links']:
+                    st.warning(f"Suspicious links found: {', '.join(result['links'])}")
+                else:
+                    st.success("No suspicious links found.")
+                if result['brands']:
+                    st.warning(f"Brand names detected: {', '.join(result['brands'])}")
+                else:
+                    st.info("No popular brand names detected.")
+            else:
+                st.info("Paste some text to analyze.")
 
 if __name__ == "__main__":
     main()
