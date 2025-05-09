@@ -280,7 +280,7 @@ def port_scan(target, port_range=(1, 1024), max_threads=100):
     return sorted(open_ports), None
 
 def main():
-    st.markdown("<h1 style='color:#ff4b4b;'>🛡️ Phishing Website Detector</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='color:#ff4b4b;'>🛡️ Phishing Website Detector, Port Scaner</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#31333f;font-size:1.1rem;'>Analyze any website for phishing risk, sensitive directories, and more!</p>", unsafe_allow_html=True)
     url = st.text_input("Enter URL to analyze:", placeholder="https://example.com")
     port_scan_enabled = st.checkbox("Perform Port Scan (for open ports)", value=False)
