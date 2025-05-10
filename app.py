@@ -20,6 +20,61 @@ from PIL import Image
 import io
 import time
 
+def phishing_quiz():
+    st.subheader("🎓 Phishing Awareness Self-Test")
+    st.markdown("Test your ability to spot phishing attempts. Can you get all questions right?")
+
+    score = 0
+
+    q1 = st.radio(
+        "1️⃣ You receive an email from 'support@micros0ft.com' asking you to reset your password urgently. The link looks like 'http://micros0ft-support.com/reset'. What should you do?",
+        [
+            "Click the link and reset your password.",
+            "Ignore the email or report it as phishing.",
+            "Reply to the sender for more info."
+        ],
+        key="quiz_q1"
+    )
+    if q1 == "Ignore the email or report it as phishing.":
+        score += 1
+
+    q2 = st.radio(
+        "2️⃣ A website uses HTTPS and has a green padlock. Does this always mean it's safe?",
+        [
+            "Yes, HTTPS means the site is always safe.",
+            "No, phishing sites can also use HTTPS."
+        ],
+        key="quiz_q2"
+    )
+    if q2 == "No, phishing sites can also use HTTPS.":
+        score += 1
+
+    q3 = st.radio(
+        "3️⃣ You see a login form on a website that looks like your bank, but the URL is 'bankofarnerica.com'. What should you do?",
+        [
+            "Enter your credentials to see if it works.",
+            "Check the URL carefully and do not enter credentials.",
+            "Call the phone number on the website."
+        ],
+        key="quiz_q3"
+    )
+    if q3 == "Check the URL carefully and do not enter credentials.":
+        score += 1
+
+    if st.button("Submit Quiz"):
+        if score == 3:
+            st.success("🎉 Excellent! You got all answers right.")
+        else:
+            st.warning(f"You scored {score}/3. Review the explanations below:")
+            if q1 != "Ignore the email or report it as phishing.":
+                st.info("Q1: The sender's address is suspicious (note the '0' instead of 'o'), and the link is not official. Never click such links.")
+            if q2 != "No, phishing sites can also use HTTPS.":
+                st.info("Q2: HTTPS only means the connection is encrypted, not that the site is trustworthy.")
+            if q3 != "Check the URL carefully and do not enter credentials.":
+                st.info("Q3: The URL is a lookalike (note the 'r' instead of 'm'). Always check URLs carefully.")
+
+    st.markdown("---")
+
 
 COMMUNITY_VOTES_FILE = "community_votes.json"
 
@@ -404,7 +459,12 @@ def main():
     st.markdown("<h1 style='color:#ff4b4b;'>🛡️ Phishing Website Detector, Port & Text Scanner</h1>", unsafe_allow_html=True)
     st.markdown("<p style='color:#31333f;font-size:1.1rem;'>Analyze a website, suspicious text, or message for phishing risk!</p>", unsafe_allow_html=True)
 
-    tab1, tab2 = st.tabs(["🔗 Website/Domain Analysis", "✉️ Text/Message Analysis"])
+    tab1, tab2, tab3 = st.tabs([
+        "🔗 Website/Domain Analysis",
+        "✉️ Text/Message Analysis",
+        "🎓 Phishing Self-Test"
+    ])
+
 
    
 
@@ -547,7 +607,7 @@ def main():
                             parsed_url = urlparse(url)
                             domain = parsed_url.netloc
                             add_to_blacklist(domain)
-                            
+
                     st.subheader("Community Reporting")
                     parsed_url = urlparse(url)
                     domain = parsed_url.netloc
@@ -596,6 +656,12 @@ def main():
                     st.info("No popular brand names detected.")
             else:
                 st.info("Paste some text to analyze.")
+
+
+                # --- Phishing Awareness Quiz Tab ---
+    with tab3:
+        phishing_quiz()
+
 
 if __name__ == "__main__":
     main()
