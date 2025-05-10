@@ -546,11 +546,11 @@ def main():
     with tab1:
         if st.button("Update Blacklist from Threat Feeds"):
          with st.spinner("Updating blacklist from multiple feeds..."):
-          success, msg = update_blacklist_from_feeds()
-        if success:
-            st.success(msg)
-        else:
-            st.error(msg)
+            success, msg = update_blacklist_from_feeds()
+            if success:
+             st.success(msg)
+            else:
+             st.error(msg)
 
 
         url = st.text_input("Enter URL to analyze:", placeholder="https://example.com")
@@ -755,6 +755,5 @@ def main():
     with tab3:
         phishing_quiz()
 
-
 if __name__ == "__main__":
-    main()
+ main()
