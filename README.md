@@ -52,6 +52,9 @@ VT_API_KEY=your_virustotal_api_key
 4. **Run the App:**
 streamlit run app.py
 
+OR
+
+Go to - https://phishingwebsite-detector-gfbzumnpgev6mwuxdfs25g.streamlit.app/
 
 ---
 
