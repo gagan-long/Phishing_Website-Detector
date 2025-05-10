@@ -34,7 +34,13 @@ def extract_dom_clues(url, timeout=10):
         driver.get(url)
         time.sleep(2)
 
-        forms = driver.find_elements("tag name", "form")
+        from selenium.webdriver.common.by import By
+        forms = driver.find_elements(By.TAG_NAME, "form")
+        password_inputs = driver.find_elements(By.XPATH, "//input[@type='password']")
+        external_scripts = driver.find_elements(By.XPATH, "//script[@src]")
+        images = driver.find_elements(By.TAG_NAME, "img")
+        visible_text = driver.find_element(By.TAG_NAME, "body").text.lower()
+
         password_inputs = driver.find_elements("xpath", "//input[@type='password']")
         external_scripts = driver.find_elements("xpath", "//script[@src]")
         images = driver.find_elements("tag name", "img")
@@ -477,7 +483,8 @@ def port_scan(target, port_range=(1, 1024), max_threads=100):
         try:
             result = s.connect_ex((target_ip, port))
             if result == 0:
-                open_ports.append(port)
+                service = PORT_SERVICE_MAP.get(port, "Unknown")
+                open_ports.append((port, service))
             else:
                 closed_ports.append(port)
         except:
@@ -489,7 +496,10 @@ def port_scan(target, port_range=(1, 1024), max_threads=100):
         t = ThreadPoolExecutor(max_workers=max_threads)
         t.submit(scan_port, port)
         t.shutdown(wait=True)
-    return sorted(open_ports), sorted(closed_ports), None
+    open_ports.sort()
+    closed_ports.sort()
+    return open_ports, closed_ports, None
+
 
 # --- Text/Message Analysis Feature ---
 def analyze_text(text):
@@ -668,9 +678,11 @@ def main():
                             else:
                                 st.markdown("<div class='ports-list'><ul>", unsafe_allow_html=True)
                                 if open_ports:
-                                    st.markdown("<li><strong>Open Ports:</strong></li>", unsafe_allow_html=True)
-                                    for port in open_ports:
-                                        st.markdown(f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:green;'>OPEN</span></li>", unsafe_allow_html=True)
+                                  st.markdown("<li><strong>Open Ports:</strong></li>", unsafe_allow_html=True)
+                                  for port, service in open_ports:
+                                     st.markdown( f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:green;'>OPEN</span> &nbsp; <em>({service})</em></li>",
+                                unsafe_allow_html=True )
+
                                 if closed_ports:
                                     st.markdown("<li><strong>Closed Ports:</strong></li>", unsafe_allow_html=True)
                                     for port in closed_ports[:20]:
