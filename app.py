@@ -366,17 +366,18 @@ def main():
 
     tab1, tab2 = st.tabs(["🔗 Website/Domain Analysis", "✉️ Text/Message Analysis"])
 
-    if st.button("Update Blacklist from PhishTank"):
+   
+
+
+    # --- Website/Domain Tab ---
+    with tab1:
+        if st.button("Update Blacklist from PhishTank"):
             with st.spinner("Updating blacklist from PhishTank..."):
                 success, msg = update_blacklist_from_phishtank()
                 if success:
                     st.success(msg)
                 else:
                     st.error(msg)
-
-
-    # --- Website/Domain Tab ---
-    with tab1:
         url = st.text_input("Enter URL to analyze:", placeholder="https://example.com")
         port_scan_enabled = st.checkbox("Perform Port Scan (for open ports)", value=False)
         port_range = (1, 1024)
