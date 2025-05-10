@@ -153,31 +153,56 @@ def get_community_verdict(domain):
         return "No community reports yet.", 0, 0
 
 
-def update_blacklist_from_phishtank():
+def update_blacklist_from_feeds():
     """
-    Fetches the latest phishing domains from PhishTank and merges with your blacklist.
+    Fetches the latest phishing domains from multiple open threat feeds and merges with your blacklist.
     """
-    PHISHTANK_CSV = "http://data.phishtank.com/data/online-valid.csv"
-    try:
-        resp = requests.get(PHISHTANK_CSV, timeout=15)
-        if resp.status_code != 200:
-            return False, f"Failed to fetch PhishTank feed: {resp.status_code}"
-        lines = resp.text.splitlines()
-        domains = set()
-        for line in lines[1:]:
-            parts = line.split('","')
-            if len(parts) > 1:
-                url = parts[1].strip('"')
-                parsed = urlparse(url)
-                domain = parsed.netloc.lower()
-                if domain:
-                    domains.add(domain)
-        existing = set(load_blacklist())
-        merged = sorted(existing.union(domains))
-        save_blacklist(list(merged))
-        return True, f"Blacklist updated! {len(domains)} domains added from PhishTank."
-    except Exception as e:
-        return False, f"Error updating blacklist: {e}"
+    FEEDS = {
+        "PhishTank": "http://data.phishtank.com/data/online-valid.csv",
+        "OpenPhish": "https://openphish.com/feed.txt",
+        "URLhaus": "https://urlhaus.abuse.ch/downloads/text/"
+    }
+    all_domains = set()
+    messages = []
+    for name, url in FEEDS.items():
+        try:
+            resp = requests.get(url, timeout=15)
+            if resp.status_code != 200:
+                messages.append(f"{name}: Failed to fetch ({resp.status_code}).")
+                continue
+            if name == "PhishTank":
+                lines = resp.text.splitlines()
+                for line in lines[1:]:
+                    parts = line.split('","')
+                    if len(parts) > 1:
+                        phish_url = parts[1].strip('"')
+                        parsed = urlparse(phish_url)
+                        domain = parsed.netloc.lower()
+                        if domain:
+                            all_domains.add(domain)
+                messages.append(f"{name}: {len(lines)-1} entries processed.")
+            else:
+                # OpenPhish and URLhaus are plain text, one URL per line
+                lines = resp.text.splitlines()
+                count = 0
+                for line in lines:
+                    if line.startswith("#") or not line.strip():
+                        continue
+                    parsed = urlparse(line.strip())
+                    domain = parsed.netloc.lower()
+                    if domain:
+                        all_domains.add(domain)
+                        count += 1
+                messages.append(f"{name}: {count} entries processed.")
+        except Exception as e:
+            messages.append(f"{name}: Error - {e}")
+    # Merge with existing blacklist
+    existing = set(load_blacklist())
+    merged = sorted(existing.union(all_domains))
+    save_blacklist(list(merged))
+    return True, f"Blacklist updated from {len(FEEDS)} feeds. {len(all_domains)} new domains added.\n" + "\n".join(messages)
+
+
 
 
 # --- Screenshot Helper ---
@@ -507,13 +532,15 @@ def main():
 
     # --- Website/Domain Tab ---
     with tab1:
-        if st.button("Update Blacklist from PhishTank"):
-            with st.spinner("Updating blacklist from PhishTank..."):
-                success, msg = update_blacklist_from_phishtank()
-                if success:
-                    st.success(msg)
-                else:
-                    st.error(msg)
+        if st.button("Update Blacklist from Threat Feeds"):
+         with st.spinner("Updating blacklist from multiple feeds..."):
+          success, msg = update_blacklist_from_feeds()
+        if success:
+            st.success(msg)
+        else:
+            st.error(msg)
+
+
         url = st.text_input("Enter URL to analyze:", placeholder="https://example.com")
         port_scan_enabled = st.checkbox("Perform Port Scan (for open ports)", value=False)
         port_range = (1, 1024)
