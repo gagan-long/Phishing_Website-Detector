@@ -16,6 +16,7 @@ import datetime
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium.webdriver.common.by import By
 from PIL import Image
 import io
 import time
@@ -137,6 +138,7 @@ def add_community_vote(domain, verdict):
     elif verdict == "safe":
         votes[domain]["safe"] += 1
     save_community_votes(votes)
+
 
 def get_community_verdict(domain):
     votes = load_community_votes()
