@@ -21,6 +21,46 @@ import io
 import time
 
 
+COMMUNITY_VOTES_FILE = "community_votes.json"
+
+def load_community_votes():
+    try:
+        with open(COMMUNITY_VOTES_FILE, "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+    except Exception:
+        return {}
+
+def save_community_votes(votes):
+    with open(COMMUNITY_VOTES_FILE, "w") as f:
+        json.dump(votes, f, indent=2)
+
+def add_community_vote(domain, verdict):
+    votes = load_community_votes()
+    domain = domain.lower()
+    if domain not in votes:
+        votes[domain] = {"phishing": 0, "safe": 0}
+    if verdict == "phishing":
+        votes[domain]["phishing"] += 1
+    elif verdict == "safe":
+        votes[domain]["safe"] += 1
+    save_community_votes(votes)
+
+def get_community_verdict(domain):
+    votes = load_community_votes()
+    domain = domain.lower()
+    if domain in votes:
+        phishing = votes[domain]["phishing"]
+        safe = votes[domain]["safe"]
+        total = phishing + safe
+        if total == 0:
+            return "No community reports yet.", phishing, safe
+        verdict = "Phishing" if phishing > safe else "Safe" if safe > phishing else "Mixed"
+        return f"Community verdict: {verdict} ({phishing} phishing, {safe} safe)", phishing, safe
+    else:
+        return "No community reports yet.", 0, 0
+
 
 def update_blacklist_from_phishtank():
     """
@@ -497,6 +537,7 @@ def main():
                                     if len(closed_ports) > 20:
                                         st.markdown(f"<li style='margin-left:20px;'><em>...and {len(closed_ports)-20} more closed ports</em></li>", unsafe_allow_html=True)
                                 st.markdown("</ul></div>", unsafe_allow_html=True)
+
                     st.subheader("Feedback")
                     feedback = st.radio("Was this prediction accurate?", ("Yes", "No"), horizontal=True)
                     comments = st.text_area("Additional Comments")
@@ -506,6 +547,23 @@ def main():
                             parsed_url = urlparse(url)
                             domain = parsed_url.netloc
                             add_to_blacklist(domain)
+                            
+                    st.subheader("Community Reporting")
+                    parsed_url = urlparse(url)
+                    domain = parsed_url.netloc
+                    comm_verdict, phishing_count, safe_count = get_community_verdict(domain)
+                    st.info(comm_verdict)
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        if st.button("Report as Phishing", key="report_phishing"):
+                            add_community_vote(domain, "phishing")
+                            st.success("Thank you for reporting! (Phishing)")
+                    with col_b:
+                        if st.button("Report as Safe", key="report_safe"):
+                            add_community_vote(domain, "safe")
+                            st.success("Thank you for reporting! (Safe)")
+
+
             else:
                 st.warning("Please enter a valid URL")
 
