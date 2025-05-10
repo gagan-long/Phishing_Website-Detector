@@ -40,7 +40,7 @@ To build an open, extensible, and user-friendly phishing website detector that c
 ## 🛠️ Setup Instructions
 
 1. **Clone the Repository:**
-git clone https://github.com/gagan-long/web_ditector_3.0.git
+git clone https://github.com/gagan-long/Phishing_Website-Detector.git
 cd web_ditector_3.0/tool
 
 2. **Install Dependencies:**
