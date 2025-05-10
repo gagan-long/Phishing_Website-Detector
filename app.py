@@ -20,6 +20,35 @@ from PIL import Image
 import io
 import time
 
+
+
+def update_blacklist_from_phishtank():
+    """
+    Fetches the latest phishing domains from PhishTank and merges with your blacklist.
+    """
+    PHISHTANK_CSV = "http://data.phishtank.com/data/online-valid.csv"
+    try:
+        resp = requests.get(PHISHTANK_CSV, timeout=15)
+        if resp.status_code != 200:
+            return False, f"Failed to fetch PhishTank feed: {resp.status_code}"
+        lines = resp.text.splitlines()
+        domains = set()
+        for line in lines[1:]:
+            parts = line.split('","')
+            if len(parts) > 1:
+                url = parts[1].strip('"')
+                parsed = urlparse(url)
+                domain = parsed.netloc.lower()
+                if domain:
+                    domains.add(domain)
+        existing = set(load_blacklist())
+        merged = sorted(existing.union(domains))
+        save_blacklist(list(merged))
+        return True, f"Blacklist updated! {len(domains)} domains added from PhishTank."
+    except Exception as e:
+        return False, f"Error updating blacklist: {e}"
+
+
 # --- Screenshot Helper ---
 def take_screenshot(url, width=1200, height=900, timeout=10):
     try:
@@ -336,6 +365,15 @@ def main():
     st.markdown("<p style='color:#31333f;font-size:1.1rem;'>Analyze a website, suspicious text, or message for phishing risk!</p>", unsafe_allow_html=True)
 
     tab1, tab2 = st.tabs(["🔗 Website/Domain Analysis", "✉️ Text/Message Analysis"])
+
+    if st.button("Update Blacklist from PhishTank"):
+            with st.spinner("Updating blacklist from PhishTank..."):
+                success, msg = update_blacklist_from_phishtank()
+                if success:
+                    st.success(msg)
+                else:
+                    st.error(msg)
+
 
     # --- Website/Domain Tab ---
     with tab1:
