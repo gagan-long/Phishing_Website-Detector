@@ -20,6 +20,42 @@ from PIL import Image
 import io
 import time
 
+def extract_dom_clues(url, timeout=10):
+    try:
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--window-size=1200,900")
+        driver = webdriver.Chrome(ChromeDriverManager().install(), options=chrome_options)
+        driver.set_page_load_timeout(timeout)
+        driver.get(url)
+        time.sleep(2)
+
+        forms = driver.find_elements("tag name", "form")
+        password_inputs = driver.find_elements("xpath", "//input[@type='password']")
+        external_scripts = driver.find_elements("xpath", "//script[@src]")
+        images = driver.find_elements("tag name", "img")
+        visible_text = driver.find_element("tag name", "body").text.lower()
+
+        suspicious_keywords = [
+            "password", "login", "verify", "account", "bank", "urgent", "reset", "confirm", "ssn", "credit card"
+        ]
+        found_keywords = [kw for kw in suspicious_keywords if kw in visible_text]
+
+        driver.quit()
+        return {
+            "forms": len(forms),
+            "password_inputs": len(password_inputs),
+            "external_scripts": len(external_scripts),
+            "images": len(images),
+            "found_keywords": found_keywords
+        }, None
+    except Exception as e:
+        return None, str(e)
+
+
 def phishing_quiz():
     st.subheader("🎓 Phishing Awareness Self-Test")
     st.markdown("Test your ability to spot phishing attempts. Can you get all questions right?")
@@ -547,6 +583,22 @@ def main():
                         if key not in ['found_paths', 'lookalike_brands']:
                             st.markdown(f"<li><strong>{key}:</strong> {value}</li>", unsafe_allow_html=True)
                     st.markdown("</ul></div>", unsafe_allow_html=True)
+
+                                        # --- Advanced DOM Clues ---
+                    st.subheader("Advanced DOM Clues")
+                    dom_clues, dom_error = extract_dom_clues(url)
+                    if dom_clues:
+                        st.write(f"**Forms on page:** {dom_clues['forms']}")
+                        st.write(f"**Password fields:** {dom_clues['password_inputs']}")
+                        st.write(f"**External scripts:** {dom_clues['external_scripts']}")
+                        st.write(f"**Images (possible logos):** {dom_clues['images']}")
+                        if dom_clues['found_keywords']:
+                            st.warning(f"Suspicious keywords found: {', '.join(dom_clues['found_keywords'])}")
+                        else:
+                            st.success("No suspicious keywords found in visible text.")
+                    else:
+                        st.info("DOM clue extraction unavailable." + (f" Error: {dom_error}" if dom_error else ""))
+
 
                     st.subheader("SSL/TLS Certificate Transparency")
                     if details.get('ssl_issuer') and details['ssl_issuer'] != 'N/A':
