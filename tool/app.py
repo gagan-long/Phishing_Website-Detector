@@ -469,36 +469,70 @@ def extract_details(url):
     return details
 
 # --- Port Scan Feature ---
+PORT_SERVICE_MAP = {
+    21: "FTP",
+    22: "SSH",
+    23: "Telnet",
+    25: "SMTP",
+    53: "DNS",
+    80: "HTTP",
+    110: "POP3",
+    143: "IMAP",
+    443: "HTTPS",
+    445: "SMB",
+    465: "SMTPS",
+    587: "SMTP (submission)",
+    993: "IMAPS",
+    995: "POP3S",
+    1433: "MSSQL",
+    1521: "Oracle DB",
+    1723: "PPTP",
+    3306: "MySQL",
+    3389: "RDP",
+    5432: "PostgreSQL",
+    5900: "VNC",
+    8080: "HTTP-alt",
+    8443: "HTTPS-alt",
+}
+
 def port_scan(target, port_range=(1, 1024), max_threads=100):
     open_ports = []
     closed_ports = []
     target_ip = None
+    
     try:
         target_ip = socket.gethostbyname(target)
-    except Exception:
-        return [], [], "Could not resolve domain to IP."
+    except Exception as e:
+        return [], [], f"Could not resolve domain to IP: {str(e)}"
+
     def scan_port(port):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(0.5)
         try:
-            result = s.connect_ex((target_ip, port))
-            if result == 0:
-                service = PORT_SERVICE_MAP.get(port, "Unknown")
-                open_ports.append((port, service))
-            else:
-                closed_ports.append(port)
-        except:
-            closed_ports.append(port)
-        finally:
-            s.close()
-    threads = []
-    for port in range(port_range[0], port_range[1]+1):
-        t = ThreadPoolExecutor(max_workers=max_threads)
-        t.submit(scan_port, port)
-        t.shutdown(wait=True)
-    open_ports.sort()
-    closed_ports.sort()
-    return open_ports, closed_ports, None
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.5)
+                result = s.connect_ex((target_ip, port))
+                if result == 0:
+                    service = PORT_SERVICE_MAP.get(port, "Unknown")
+                    return (port, service)
+        except Exception:
+            pass
+        return None
+
+    try:
+        with ThreadPoolExecutor(max_workers=max_threads) as executor:
+            futures = [executor.submit(scan_port, port) 
+                      for port in range(port_range[0], port_range[1] + 1)]
+            
+            open_ports = [future.result() for future in futures 
+                         if future.result() is not None]
+
+        open_ports.sort(key=lambda x: x[0])
+        closed_ports = [port for port in range(port_range[0], port_range[1] + 1)
+                       if port not in [p[0] for p in open_ports]]
+        
+        return open_ports, closed_ports, None
+
+    except Exception as e:
+        return [], [], f"Port scan failed: {str(e)}"
 
 
 # --- Text/Message Analysis Feature ---
@@ -668,28 +702,38 @@ def main():
                         st.warning("No common paths discovered")
                     # --- Port Scan Section ---
                     if port_scan_enabled:
-                        st.subheader(f"Port Scan Results ({port_range[0]}–{port_range[1]})")
-                        parsed_url = urlparse(url)
-                        domain = parsed_url.netloc
-                        with st.spinner("Scanning ports... (this may take a while)"):
-                            open_ports, closed_ports, error = port_scan(domain, port_range)
-                            if error:
-                                st.error(error)
-                            else:
-                                st.markdown("<div class='ports-list'><ul>", unsafe_allow_html=True)
-                                if open_ports:
-                                  st.markdown("<li><strong>Open Ports:</strong></li>", unsafe_allow_html=True)
-                                  for port, service in open_ports:
-                                     st.markdown( f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:green;'>OPEN</span> &nbsp; <em>({service})</em></li>",
-                                unsafe_allow_html=True )
+                      st.subheader(f"Port Scan Results ({port_range[0]}–{port_range[1]})")
+                      parsed_url = urlparse(url)
+                      domain = parsed_url.netloc if parsed_url.netloc else parsed_url.path  # fallback for bare domains
+                      with st.spinner("Scanning ports... (this may take a while)"):
+                       open_ports, closed_ports, error = port_scan(domain, port_range)
+                       if error:
+                         st.error(error)
+                       else:
+                        st.markdown("<div class='ports-list'><ul>", unsafe_allow_html=True)
+                       if open_ports:
+                        st.markdown("<li><strong>Open Ports:</strong></li>", unsafe_allow_html=True)
+                       for port, service in open_ports:
+                          st.markdown(
+                        f"<li style='margin-left:20px;'><strong>Port {port}:</strong> "
+                        f"<span style='color:green;'>OPEN</span> &nbsp; <em>({service})</em></li>",
+                        unsafe_allow_html=True)
+                       else:
+                        st.markdown("<li><strong>No open ports found in the scanned range.</strong></li>", unsafe_allow_html=True)
 
-                                if closed_ports:
-                                    st.markdown("<li><strong>Closed Ports:</strong></li>", unsafe_allow_html=True)
-                                    for port in closed_ports[:20]:
-                                        st.markdown(f"<li style='margin-left:20px;'><strong>Port {port}:</strong> <span style='color:red;'>CLOSED</span></li>", unsafe_allow_html=True)
-                                    if len(closed_ports) > 20:
-                                        st.markdown(f"<li style='margin-left:20px;'><em>...and {len(closed_ports)-20} more closed ports</em></li>", unsafe_allow_html=True)
-                                st.markdown("</ul></div>", unsafe_allow_html=True)
+                      if closed_ports:
+                        st.markdown("<li><strong>Closed Ports (showing up to 20):</strong></li>", unsafe_allow_html=True)
+                      for port in closed_ports[:20]:
+                       st.markdown(
+                        f"<li style='margin-left:20px;'><strong>Port {port}:</strong> "
+                        f"<span style='color:red;'>CLOSED</span></li>",
+                        unsafe_allow_html=True                    )
+                      if len(closed_ports) > 20:
+                       st.markdown(
+                        f"<li style='margin-left:20px;'><em>...and {len(closed_ports)-20} more closed ports</em></li>",
+                        unsafe_allow_html=True                    )
+                       st.markdown("</ul></div>", unsafe_allow_html=True)
+
 
                     st.subheader("Feedback")
                     feedback = st.radio("Was this prediction accurate?", ("Yes", "No"), horizontal=True)
