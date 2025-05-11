@@ -70,7 +70,7 @@ Go to - https://phishingwebsite-detector-gfbzumnpgev6mwuxdfs25g.streamlit.app/
 
 ## 🎥 Demo Video
 
-[![Watch the Demo](https://img.shields.io/badge/YouTube-Demo%20Video-red?logo=youtube)](PASTE_YOUR_YOUTUBE_LINK_HERE)
+[![Watch the Demo](https://img.shields.io/badge/YouTube-Demo%20Video-red?logo=youtube)](https://youtu.be/syWq5gx05mE)
 
 ---
 
